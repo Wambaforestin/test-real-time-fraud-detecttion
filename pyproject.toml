@@ -4,4 +4,8 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "avro-python3>=1.10.2",
+    "confluent-kafka[avro]>=2.13.0",
+    "faker>=40.4.0",
+]
