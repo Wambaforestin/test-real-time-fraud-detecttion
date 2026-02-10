@@ -61,7 +61,7 @@ docker cp spark-jobs/fraud_detection.py fraud-spark-master:/opt/spark-jobs/
 # Soumettre le job
 docker exec fraud-spark-master spark-submit `
   --master spark://fraud-spark-master:7077 `
-  --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,org.apache.spark:spark-avro_2.12:3.5.0,org.mongodb.spark:mongo-spark-connector_2.12:10.2.0 `
+  --packages org.apache.spark:spark-sql-kafka-0-10_2.12:3.4.0,org.apache.spark:spark-avro_2.12:3.4.0,org.mongodb.spark:mongo-spark-connector_2.12:10.2.0 `
   --conf spark.mongodb.write.connection.uri=mongodb://admin:admin123@fraud-mongodb:27017/fraud_db.fraud_alerts?authSource=admin `
   /opt/spark-jobs/fraud_detection.py
 ```

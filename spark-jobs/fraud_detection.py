@@ -381,6 +381,51 @@ def write_to_mongodb(df):
     return query
 
 
+def write_to_kafka_fraud_alerts(df):
+    """
+    Republish ONLY fraudulent transactions to Kafka topic 'fraud_alerts'
+    """
+    
+    print("\n🚨 Configuring Kafka Fraud Alerts output...")
+    print(f"   Topic: fraud_alerts")
+    print(f"   Broker: {KAFKA_BROKER}")
+    print(f"   Filter: is_fraud_detected == true")
+    
+    # Filter only fraud transactions
+    fraud_df = df.filter(col("is_fraud_detected") == True)
+    
+    # Format for Kafka (JSON string)
+    kafka_fraud = fraud_df.select(
+        to_json(struct(
+            col("transaction_id"),
+            col("transaction_time"),
+            col("customer_id"),
+            col("amount"),
+            col("merchant_category"),
+            col("location.country").alias("country"),
+            col("is_fraud_detected").alias("is_fraud"),
+            col("fraud_detection_reason").alias("fraud_reason"),
+            col("risk_score"),
+            col("window_total_amount"),
+            col("window_transaction_count")
+        )).alias("value")
+    )
+    
+    # Write to Kafka
+    query = kafka_fraud \
+        .writeStream \
+        .outputMode("append") \
+        .format("kafka") \
+        .option("kafka.bootstrap.servers", KAFKA_BROKER) \
+        .option("topic", "fraud_alerts") \
+        .option("checkpointLocation", f"{HDFS_CHECKPOINT_PATH}/kafka_fraud_alerts") \
+        .trigger(processingTime="10 seconds") \
+        .start()
+    
+    print("✅ Kafka Fraud Alerts stream started")
+    return query
+
+
 def write_console_debug(df):
     """Write to console for debugging"""
     
