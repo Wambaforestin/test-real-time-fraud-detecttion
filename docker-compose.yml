@@ -6,8 +6,8 @@ services:
   # ============================================
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0
-    container_name: zookeeper
-    hostname: zookeeper
+    container_name: fraud-zookeeper
+    hostname: fraud-zookeeper
     ports:
       - "2181:2181"
     environment:
@@ -35,8 +35,8 @@ services:
 
   kafka:
     image: confluentinc/cp-kafka:7.5.0
-    container_name: kafka
-    hostname: kafka
+    container_name: fraud-kafka
+    hostname: fraud-kafka
     depends_on:
       - zookeeper
     ports:
@@ -44,9 +44,9 @@ services:
       - "29092:29092"
     environment:
       KAFKA_BROKER_ID: 1
-      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ZOOKEEPER_CONNECT: fraud-zookeeper:2181
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
-      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://fraud-kafka:29092,PLAINTEXT_HOST://localhost:9092
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
       KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
@@ -79,15 +79,15 @@ services:
 
   schema-registry:
     image: confluentinc/cp-schema-registry:7.5.0
-    container_name: schema-registry
-    hostname: schema-registry
+    container_name: fraud-schema-registry
+    hostname: fraud-schema-registry
     depends_on:
       - kafka
     ports:
       - "8081:8081"
     environment:
-      SCHEMA_REGISTRY_HOST_NAME: schema-registry
-      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: kafka:29092
+      SCHEMA_REGISTRY_HOST_NAME: fraud-schema-registry
+      SCHEMA_REGISTRY_KAFKASTORE_BOOTSTRAP_SERVERS: fraud-kafka:29092
       SCHEMA_REGISTRY_LISTENERS: http://0.0.0.0:8081
       SCHEMA_REGISTRY_KAFKASTORE_TOPIC: _schemas
       SCHEMA_REGISTRY_SCHEMA_REGISTRY_GROUP_ID: schema-registry
@@ -117,15 +117,15 @@ services:
   # ============================================
   namenode:
     image: bde2020/hadoop-namenode:2.0.0-hadoop3.2.1-java8
-    container_name: namenode
-    hostname: namenode
+    container_name: fraud-namenode
+    hostname: fraud-namenode
     ports:
       - "9870:9870"  # Web UI
       - "8020:8020"  # IPC
       - "9000:9000"  # HDFS
     environment:
       - CLUSTER_NAME=fraud-detection-cluster
-      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - CORE_CONF_fs_defaultFS=hdfs://fraud-namenode:9000
       - CORE_CONF_hadoop_http_staticuser_user=root
       - HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check=false
       - HDFS_CONF_dfs_permissions_enabled=false
@@ -156,15 +156,15 @@ services:
 
   datanode:
     image: bde2020/hadoop-datanode:2.0.0-hadoop3.2.1-java8
-    container_name: datanode
-    hostname: datanode
+    container_name: fraud-datanode
+    hostname: fraud-datanode
     depends_on:
       - namenode
     ports:
       - "9864:9864"  # Web UI
       - "9866:9866"  # Data transfer
     environment:
-      - CORE_CONF_fs_defaultFS=hdfs://namenode:9000
+      - CORE_CONF_fs_defaultFS=hdfs://fraud-namenode:9000
       - HDFS_CONF_dfs_datanode_data_dir=file:///hadoop/dfs/data
       - HDFS_CONF_dfs_namenode_datanode_registration_ip___hostname___check=false
       - HDFS_CONF_dfs_permissions_enabled=false
@@ -191,8 +191,8 @@ services:
   # ============================================
   spark-master:
     image: bitnami/spark:3.5.0
-    container_name: spark-master
-    hostname: spark-master
+    container_name: fraud-spark-master
+    hostname: fraud-spark-master
     ports:
       - "8080:8080"  # Web UI
       - "7077:7077"  # Master port
@@ -231,15 +231,15 @@ services:
 
   spark-worker:
     image: bitnami/spark:3.5.0
-    container_name: spark-worker
-    hostname: spark-worker
+    container_name: fraud-spark-worker
+    hostname: fraud-spark-worker
     depends_on:
       - spark-master
     ports:
       - "8081:8081"  # Worker Web UI
     environment:
       - SPARK_MODE=worker
-      - SPARK_MASTER_URL=spark://spark-master:7077
+      - SPARK_MASTER_URL=spark://fraud-spark-master:7077
       - SPARK_WORKER_MEMORY=2G
       - SPARK_WORKER_CORES=2
       - SPARK_RPC_AUTHENTICATION_ENABLED=no
@@ -272,8 +272,8 @@ services:
   # ============================================
   mongodb:
     image: mongo:7.0
-    container_name: mongodb
-    hostname: mongodb
+    container_name: fraud-mongodb
+    hostname: fraud-mongodb
     ports:
       - "27017:27017"
     environment:
@@ -306,8 +306,8 @@ services:
 
   mongo-express:
     image: mongo-express:1.0.2
-    container_name: mongo-express
-    hostname: mongo-express
+    container_name: fraud-mongo-express
+    hostname: fraud-mongo-express
     depends_on:
       - mongodb
     ports:
@@ -315,10 +315,10 @@ services:
     environment:
       ME_CONFIG_MONGODB_ADMINUSERNAME: admin
       ME_CONFIG_MONGODB_ADMINPASSWORD: admin123
-      ME_CONFIG_MONGODB_URL: mongodb://admin:admin123@mongodb:27017/
+      ME_CONFIG_MONGODB_URL: mongodb://admin:admin123@fraud-mongodb:27017/
       ME_CONFIG_BASICAUTH_USERNAME: admin
       ME_CONFIG_BASICAUTH_PASSWORD: admin123
-      ME_CONFIG_MONGODB_SERVER: mongodb
+      ME_CONFIG_MONGODB_SERVER: fraud-mongodb
     networks:
       - fraud-network
     restart: unless-stopped

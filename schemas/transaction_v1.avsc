@@ -2,7 +2,7 @@
   "type": "record",
   "name": "Transaction",
   "namespace": "com.fraud.detection",
-  "doc": "Schema for financial transaction events in fraud detection system",
+  "doc": "Schema V1 - Initial version for financial transaction events",
   "fields": [
     {
       "name": "transaction_id",
@@ -133,18 +133,6 @@
       "type": ["null", "double"],
       "default": null,
       "doc": "Fraud risk score (0.0 to 1.0), calculated by ML model"
-    },
-    {
-      "name": "is_fraud",
-      "type": ["null", "boolean"],
-      "default": null,
-      "doc": "Fraud flag (true if fraudulent, null if not yet determined)"
-    },
-    {
-      "name": "fraud_reason",
-      "type": ["null", "string"],
-      "default": null,
-      "doc": "Reason for fraud detection (if applicable)"
     },
     {
       "name": "customer_profile",
