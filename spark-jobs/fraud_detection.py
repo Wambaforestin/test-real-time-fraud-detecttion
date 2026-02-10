@@ -10,7 +10,7 @@ from pyspark.sql import SparkSession
 from pyspark.sql.functions import (
     from_json, col, from_unixtime, year, month, dayofmonth,
     window, sum as _sum, count, avg, max as _max,
-    current_timestamp, lit, struct, to_json
+    current_timestamp, lit, struct, to_json, when, concat
 )
 from pyspark.sql.types import (
     StructType, StructField, StringType, DoubleType, LongType,
@@ -24,6 +24,7 @@ import pyspark.sql.functions as F
 # CONFIGURATION
 # ============================================
 KAFKA_BOOTSTRAP_SERVERS = "fraud-kafka:29092"
+KAFKA_BROKER = "fraud-kafka:29092"  # Alias pour compatibilité
 KAFKA_TOPIC = "transactions"
 SCHEMA_REGISTRY_URL = "http://fraud-schema-registry:8081"
 
@@ -160,7 +161,7 @@ def create_spark_session():
         .config("spark.jars.packages", 
                 "org.apache.spark:spark-sql-kafka-0-10_2.12:3.5.0,"
                 "org.apache.spark:spark-avro_2.12:3.5.0,"
-                "org.mongodb.spark:mongo-spark-connector_2.12:10.2.0") \
+                "org.mongodb.spark:mongo-spark-connector_2.12:10.3.0") \
         .config("spark.sql.streaming.checkpointLocation", HDFS_CHECKPOINT_PATH) \
         .config("spark.mongodb.write.connection.uri", MONGODB_URI) \
         .config("spark.hadoop.fs.defaultFS", HDFS_NAMENODE) \
@@ -203,18 +204,14 @@ def read_kafka_stream(spark):
 
 def deserialize_avro(df):
     """
-    Deserialize Avro messages from Kafka
-    For simplicity, we parse as JSON (assumes producer sends JSON-serialized Avro)
-    In production, use from_avro with Schema Registry
+    Deserialize JSON messages from Kafka (producer sends JSON)
     """
     
-    print("\n🔄 Deserializing Avro messages...")
+    print("\n🔄 Deserializing JSON messages...")
     
     schema = get_transaction_schema()
     
     # Parse the value from Kafka as JSON
-    # Note: confluent_kafka producer with Avro serializes to binary
-    # For this example, we assume the value is UTF-8 encoded JSON
     parsed_df = df.selectExpr("CAST(value AS STRING) as json_value") \
         .select(from_json(col("json_value"), schema).alias("data")) \
         .select("data.*")
@@ -240,63 +237,36 @@ def deserialize_avro(df):
 
 def apply_fraud_detection(df):
     """
-    Apply fraud detection logic with windowed aggregations
-    Window: 5 minutes sliding by 1 minute on card_last_4
+    Apply fraud detection logic - SIMPLIFIED VERSION
+    Uses producer's is_fraud flag + simple amount threshold
+    (Windowed aggregations removed to avoid stream-stream join issues)
     """
     
-    print("\n🔍 Applying fraud detection with windowed aggregations...")
-    print(f"   Window: {WINDOW_DURATION}")
-    print(f"   Slide: {SLIDE_DURATION}")
+    print("\n🔍 Applying fraud detection...")
     print(f"   Threshold: ${FRAUD_AMOUNT_THRESHOLD}")
+    print(f"   Logic: Producer is_fraud OR amount > threshold")
     
-    # Windowed aggregations per card
-    windowed_agg = df \
-        .withWatermark("transaction_time", "10 minutes") \
-        .groupBy(
-            window(col("transaction_time"), WINDOW_DURATION, SLIDE_DURATION),
-            col("card_last_4"),
-            col("customer_id")
-        ) \
-        .agg(
-            _sum("amount").alias("total_amount"),
-            count("*").alias("transaction_count"),
-            avg("amount").alias("avg_amount"),
-            _max("amount").alias("max_amount")
-        )
-    
-    # Join back with original transactions
-    enriched_df = df.alias("t") \
-        .join(
-            windowed_agg.alias("w"),
-            (col("t.card_last_4") == col("w.card_last_4")) &
-            (col("t.customer_id") == col("w.customer_id")) &
-            (col("t.transaction_time") >= col("w.window.start")) &
-            (col("t.transaction_time") < col("w.window.end")),
-            "left"
-        ) \
-        .select(
-            col("t.*"),
-            col("w.total_amount").alias("window_total_amount"),
-            col("w.transaction_count").alias("window_transaction_count"),
-            col("w.avg_amount").alias("window_avg_amount"),
-            col("w.max_amount").alias("window_max_amount")
-        )
-    
-    # Enhanced fraud detection
-    # Combine original is_fraud with window-based detection
-    fraud_detected_df = enriched_df \
+    # Simplified fraud detection:
+    # 1. Trust producer's is_fraud flag
+    # 2. Add Spark-side high amount detection
+    fraud_detected_df = df \
         .withColumn(
             "is_fraud_detected",
-            (col("is_fraud") == True) |  # Original fraud flag from V2
-            (col("window_total_amount") > FRAUD_AMOUNT_THRESHOLD) |  # Window threshold
-            (col("window_transaction_count") >= 5)  # Velocity check
+            col("is_fraud") |  # Original fraud flag from producer
+            (col("amount") > FRAUD_AMOUNT_THRESHOLD)  # High amount threshold
         ) \
         .withColumn(
             "fraud_detection_reason",
-            F.when(col("is_fraud") == True, col("fraud_reason"))
-             .when(col("window_total_amount") > FRAUD_AMOUNT_THRESHOLD, "window_amount_exceeded")
-             .when(col("window_transaction_count") >= 5, "velocity_check_window")
-             .otherwise("none")
+            when(col("is_fraud_detected"),
+                 concat(
+                     when(col("is_fraud"), 
+                          concat(lit("Producer: "), col("fraud_reason"), lit(" | "))
+                     ).otherwise(lit("")),
+                     when(col("amount") > FRAUD_AMOUNT_THRESHOLD, 
+                          lit("Spark: High Amount")
+                     ).otherwise(lit(""))
+                 )
+            ).otherwise(lit("none"))
         )
     
     print("✅ Fraud detection applied")
@@ -344,7 +314,7 @@ def write_to_mongodb(df):
     print(f"   Filter: is_fraud_detected == true")
     
     # Filter only fraud transactions
-    fraud_df = df.filter(col("is_fraud_detected") == True)
+    fraud_df = df.filter(col("is_fraud_detected"))
     
     # Select relevant fields for MongoDB
     fraud_alerts = fraud_df.select(
@@ -360,8 +330,6 @@ def write_to_mongodb(df):
         col("is_fraud_detected").alias("is_fraud"),
         col("fraud_detection_reason").alias("fraud_reason"),
         col("risk_score"),
-        col("window_total_amount"),
-        col("window_transaction_count"),
         col("processed_at")
     )
     
@@ -392,7 +360,7 @@ def write_to_kafka_fraud_alerts(df):
     print(f"   Filter: is_fraud_detected == true")
     
     # Filter only fraud transactions
-    fraud_df = df.filter(col("is_fraud_detected") == True)
+    fraud_df = df.filter(col("is_fraud_detected"))
     
     # Format for Kafka (JSON string)
     kafka_fraud = fraud_df.select(
@@ -405,9 +373,7 @@ def write_to_kafka_fraud_alerts(df):
             col("location.country").alias("country"),
             col("is_fraud_detected").alias("is_fraud"),
             col("fraud_detection_reason").alias("fraud_reason"),
-            col("risk_score"),
-            col("window_total_amount"),
-            col("window_transaction_count")
+            col("risk_score")
         )).alias("value")
     )
     
@@ -462,7 +428,7 @@ def main():
     print("=" * 70)
     print("Architecture: Lambda - Speed Layer")
     print("Source: Kafka (transactions)")
-    print("Sinks: HDFS (all) + MongoDB (fraud only)")
+    print("Sinks: HDFS (all) + MongoDB (fraud) + Kafka fraud_alerts (fraud)")
     print("=" * 70)
     
     try:
@@ -484,7 +450,10 @@ def main():
         # 6. Write to MongoDB (FRAUD ONLY)
         mongo_query = write_to_mongodb(fraud_stream)
         
-        # 7. Console output for debugging (optional)
+        # 7. Write to Kafka fraud_alerts topic (FRAUD ONLY)
+        kafka_fraud_query = write_to_kafka_fraud_alerts(fraud_stream)
+        
+        # 8. Console output for debugging (optional)
         console_query = write_console_debug(fraud_stream)
         
         print("\n" + "=" * 70)
@@ -493,6 +462,7 @@ def main():
         print("📊 Streaming Statistics:")
         print(f"   HDFS: Writing all transactions to {HDFS_OUTPUT_PATH}")
         print(f"   MongoDB: Writing fraud alerts to {MONGODB_DATABASE}.{MONGODB_COLLECTION}")
+        print(f"   Kafka: Writing fraud alerts to topic 'fraud_alerts'")
         print(f"   Console: Debug output enabled")
         print("\n🔄 Processing... (Press Ctrl+C to stop)")
         print("=" * 70)

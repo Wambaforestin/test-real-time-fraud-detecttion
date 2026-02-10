@@ -13,8 +13,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List
 from pathlib import Path
 
-from confluent_kafka import avro
-from confluent_kafka.avro import AvroProducer
+from confluent_kafka import Producer
 
 
 # Configuration
@@ -159,51 +158,31 @@ class TransactionGenerator:
         return is_fraud, fraud_reason, risk_score
 
 
-def load_schema(schema_path: Path) -> avro.loads:
-    """Load Avro schema from file"""
-    with open(schema_path, 'r') as f:
-        schema_str = f.read()
-    return avro.loads(schema_str)
-
-
 def delivery_report(err, msg):
     """Callback called once for each message produced to indicate delivery result"""
     if err is not None:
-        print(f"❌ Message delivery failed: {err}")
-    else:
-        print(f"✅ Message delivered to {msg.topic()} [{msg.partition()}] at offset {msg.offset()}")
+        print(f"\u274c Message delivery failed: {err}")
+    # Success is silent for cleaner output
 
 
 def main():
     """Main producer loop"""
     
     print("=" * 70)
-    print("🚀 Transaction Producer - Kafka Avro with Schema Evolution")
+    print("🚀 Transaction Producer - Kafka JSON with Schema Evolution")
     print("=" * 70)
     print(f"Kafka Broker: {KAFKA_BROKER}")
-    print(f"Schema Registry: {SCHEMA_REGISTRY_URL}")
     print(f"Topic: {TOPIC_NAME}")
     print("=" * 70)
-    
-    # Load schemas
-    print("\n📋 Loading schemas...")
-    schema_v1 = load_schema(SCHEMA_V1_PATH)
-    schema_v2 = load_schema(SCHEMA_V2_PATH)
-    print(f"  ✓ Schema V1 loaded from {SCHEMA_V1_PATH.name}")
-    print(f"  ✓ Schema V2 loaded from {SCHEMA_V2_PATH.name}")
     
     # Configure producer
     producer_config = {
         'bootstrap.servers': KAFKA_BROKER,
-        'schema.registry.url': SCHEMA_REGISTRY_URL,
+        'client.id': 'transaction-producer'
     }
     
     print("\n🔌 Connecting to Kafka...")
-    producer = AvroProducer(
-        producer_config,
-        default_key_schema=avro.loads('{"type": "string"}'),
-        default_value_schema=schema_v1  # Start with V1
-    )
+    producer = Producer(producer_config)
     print("  ✓ Connected successfully")
     
     # Initialize generator
@@ -215,7 +194,7 @@ def main():
     try:
         print("\n" + "=" * 70)
         print("📤 Starting message production...")
-        print("  Phase 1: Sending 20 messages with Schema V1")
+        print("  Phase 1: Sending 20 messages with Schema V1 (no fraud fields)")
         print("  Phase 2: Switching to Schema V2 (with fraud detection)")
         print("=" * 70 + "\n")
         
@@ -227,12 +206,6 @@ def main():
                 print("\n" + "🔄" * 35)
                 print("🔄 SWITCHING TO SCHEMA V2 (Adding fraud detection fields)")
                 print("🔄" * 35 + "\n")
-                # Update producer with V2 schema
-                producer = AvroProducer(
-                    producer_config,
-                    default_key_schema=avro.loads('{"type": "string"}'),
-                    default_value_schema=schema_v2
-                )
             
             use_v2 = message_count > 20
             schema_version = "V2" if use_v2 else "V1"
@@ -244,14 +217,15 @@ def main():
             if use_v2 and transaction.get("is_fraud", False):
                 fraud_count += 1
             
-            # Produce message
-            key = transaction["customer_id"]
+            # Produce message as JSON
+            key = transaction["customer_id"].encode('utf-8')
+            value = json.dumps(transaction).encode('utf-8')
             
             try:
                 producer.produce(
                     topic=TOPIC_NAME,
                     key=key,
-                    value=transaction,
+                    value=value,
                     callback=delivery_report
                 )
                 
