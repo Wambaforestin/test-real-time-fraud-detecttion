@@ -1,0 +1,191 @@
+{
+  "type": "record",
+  "name": "Transaction",
+  "namespace": "com.fraud.detection",
+  "doc": "Schema for financial transaction events in fraud detection system",
+  "fields": [
+    {
+      "name": "transaction_id",
+      "type": "string",
+      "doc": "Unique transaction identifier (UUID)"
+    },
+    {
+      "name": "timestamp",
+      "type": "long",
+      "logicalType": "timestamp-millis",
+      "doc": "Transaction timestamp in milliseconds since epoch"
+    },
+    {
+      "name": "amount",
+      "type": "double",
+      "doc": "Transaction amount in USD"
+    },
+    {
+      "name": "currency",
+      "type": "string",
+      "default": "USD",
+      "doc": "Currency code (ISO 4217)"
+    },
+    {
+      "name": "merchant_id",
+      "type": "string",
+      "doc": "Merchant identifier"
+    },
+    {
+      "name": "merchant_category",
+      "type": {
+        "type": "enum",
+        "name": "MerchantCategory",
+        "symbols": [
+          "RETAIL",
+          "RESTAURANT",
+          "TRAVEL",
+          "ENTERTAINMENT",
+          "GROCERIES",
+          "HEALTH",
+          "UTILITIES",
+          "ONLINE",
+          "OTHER"
+        ]
+      },
+      "doc": "Merchant business category"
+    },
+    {
+      "name": "customer_id",
+      "type": "string",
+      "doc": "Customer identifier"
+    },
+    {
+      "name": "card_type",
+      "type": {
+        "type": "enum",
+        "name": "CardType",
+        "symbols": ["CREDIT", "DEBIT", "PREPAID"]
+      },
+      "doc": "Type of payment card used"
+    },
+    {
+      "name": "card_last_4",
+      "type": "string",
+      "doc": "Last 4 digits of card number"
+    },
+    {
+      "name": "location",
+      "type": {
+        "type": "record",
+        "name": "Location",
+        "fields": [
+          {
+            "name": "country",
+            "type": "string",
+            "doc": "Country code (ISO 3166-1 alpha-2)"
+          },
+          {
+            "name": "city",
+            "type": "string",
+            "doc": "City name"
+          },
+          {
+            "name": "latitude",
+            "type": ["null", "double"],
+            "default": null,
+            "doc": "GPS latitude coordinate"
+          },
+          {
+            "name": "longitude",
+            "type": ["null", "double"],
+            "default": null,
+            "doc": "GPS longitude coordinate"
+          }
+        ]
+      },
+      "doc": "Transaction location information"
+    },
+    {
+      "name": "transaction_type",
+      "type": {
+        "type": "enum",
+        "name": "TransactionType",
+        "symbols": ["PURCHASE", "WITHDRAWAL", "TRANSFER", "REFUND", "PAYMENT"]
+      },
+      "doc": "Type of transaction"
+    },
+    {
+      "name": "is_online",
+      "type": "boolean",
+      "default": false,
+      "doc": "Whether transaction was made online"
+    },
+    {
+      "name": "device_id",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Device identifier for online transactions"
+    },
+    {
+      "name": "ip_address",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "IP address for online transactions"
+    },
+    {
+      "name": "risk_score",
+      "type": ["null", "double"],
+      "default": null,
+      "doc": "Fraud risk score (0.0 to 1.0), calculated by ML model"
+    },
+    {
+      "name": "is_fraud",
+      "type": ["null", "boolean"],
+      "default": null,
+      "doc": "Fraud flag (true if fraudulent, null if not yet determined)"
+    },
+    {
+      "name": "fraud_reason",
+      "type": ["null", "string"],
+      "default": null,
+      "doc": "Reason for fraud detection (if applicable)"
+    },
+    {
+      "name": "customer_profile",
+      "type": {
+        "type": "record",
+        "name": "CustomerProfile",
+        "fields": [
+          {
+            "name": "age",
+            "type": ["null", "int"],
+            "default": null,
+            "doc": "Customer age"
+          },
+          {
+            "name": "account_age_days",
+            "type": "int",
+            "doc": "Days since account creation"
+          },
+          {
+            "name": "average_transaction_amount",
+            "type": "double",
+            "doc": "Historical average transaction amount"
+          },
+          {
+            "name": "transaction_count_24h",
+            "type": "int",
+            "default": 0,
+            "doc": "Number of transactions in last 24 hours"
+          }
+        ]
+      },
+      "doc": "Customer behavioral profile"
+    },
+    {
+      "name": "metadata",
+      "type": {
+        "type": "map",
+        "values": "string"
+      },
+      "default": {},
+      "doc": "Additional metadata as key-value pairs"
+    }
+  ]
+}
